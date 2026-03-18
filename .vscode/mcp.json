@@ -1,0 +1,13 @@
+{
+	"servers": {
+		"MCPServer": {
+			"type": "stdio",
+			"command": "npm",
+			"args": [
+				"run",
+				"server:dev"
+			]
+		}
+	},
+	"inputs": []
+}
