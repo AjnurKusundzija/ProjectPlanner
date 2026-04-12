@@ -8,7 +8,6 @@ const stdio_js_1 = require("@modelcontextprotocol/sdk/server/stdio.js");
 const zod_1 = require("zod");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
-// ─── JSON file helpers ────────────────────────────────────────────────────────
 const DB_PATH = path_1.default.resolve('data/podaci.json');
 function readDB() {
     if (!fs_1.default.existsSync(DB_PATH)) {
@@ -25,12 +24,10 @@ function writeDB(data) {
 function nextId(items) {
     return items.length === 0 ? 1 : Math.max(...items.map((i) => i.id)) + 1;
 }
-// Pretvara datume kao "19.12.2222", "19/12/2222" ili "2222-12-19" u "YYYY-MM-DD"
+// Pretvara datume u trazeni foramt
 function normalizeDate(input) {
-    // već ispravan format
     if (/^\d{4}-\d{2}-\d{2}$/.test(input))
         return input;
-    // DD.MM.YYYY ili DD/MM/YYYY
     const dmyMatch = input.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})\.?$/);
     if (dmyMatch) {
         const [, d, m, y] = dmyMatch;
@@ -38,30 +35,27 @@ function normalizeDate(input) {
     }
     return null;
 }
-// Parsira todos — prihvata JSON array string ili plain tekst odvojen zarezima/novim redom
 function parseTodos(input) {
     const trimmed = input.trim();
     if (!trimmed)
         return [];
-    // pokušaj JSON parse
     try {
         const parsed = JSON.parse(trimmed);
         if (Array.isArray(parsed))
             return parsed.map(String).filter(Boolean);
     }
     catch { }
-    // fallback: split po novom redu ili zarezu
     return trimmed
         .split(/[\n,]+/)
         .map((s) => s.trim())
         .filter(Boolean);
 }
-// ─── MCP Server ───────────────────────────────────────────────────────────────
+//MCP server setup
 const server = new mcp_js_1.McpServer({
     name: 'MCPServer',
     version: '1.0.0',
 });
-// ─── TOOL 1: create_project ───────────────────────────────────────────────────
+//create_project
 server.registerTool('create_project', {
     description: 'Kreira novi projekat sa imenom, rokom i opcionalnim todo stavkama',
     inputSchema: {
@@ -114,7 +108,7 @@ server.registerTool('create_project', {
             }],
     };
 });
-// ─── TOOL 2: get_project ──────────────────────────────────────────────────────
+//get_project
 server.registerTool('get_project', {
     description: 'Dohvata projekat po imenu zajedno sa svim todo stavkama',
     inputSchema: {
@@ -142,7 +136,7 @@ server.registerTool('get_project', {
             }],
     };
 });
-// ─── TOOL 3: list_projects ────────────────────────────────────────────────────
+//list_projects
 server.registerTool('list_projects', {
     description: 'Lista sve projekte sa statusom roka i progresom todosa',
     inputSchema: {},
@@ -164,7 +158,7 @@ server.registerTool('list_projects', {
             }],
     };
 });
-// ─── TOOL 4: update_project ───────────────────────────────────────────────────
+//update_project
 server.registerTool('update_project', {
     description: 'Mijenja ime i/ili rok projekta',
     inputSchema: {
@@ -230,7 +224,7 @@ server.registerTool('update_project', {
             }],
     };
 });
-// ─── TOOL 5: manage_todo ──────────────────────────────────────────────────────
+//manage_todo
 server.registerTool('manage_todo', {
     description: 'Dodaje, toggleuje ili briše todo stavku unutar projekta',
     inputSchema: {
@@ -320,7 +314,7 @@ server.registerTool('manage_todo', {
             }],
     };
 });
-// ─── TOOL 6: delete_project ───────────────────────────────────────────────────
+//delete_project
 server.registerTool('delete_project', {
     description: 'Briše projekat i sve njegove todo stavke',
     inputSchema: {
@@ -353,8 +347,7 @@ server.registerTool('delete_project', {
             }],
     };
 });
-// ─── RESOURCE 1: projects://all ──────────────────────────────────────────────
-// Vraća listu svih projekata sa statusom i progresom todosa
+//project:all-Vraća listu svih projekata sa statusom i progresom todosa
 server.registerResource('all-projects', 'projects://all', {
     description: 'Lista svih projekata sa statusom roka i progresom todosa',
     mimeType: 'application/json',
@@ -377,8 +370,7 @@ server.registerResource('all-projects', 'projects://all', {
             }],
     };
 });
-// ─── RESOURCE 2: projects://details ──────────────────────────────────────────
-// Vraća sve projekte sa kompletnim podacima uključujući todolistu
+//projects://details-Vraća sve projekte sa kompletnim podacima uključujući todolistu
 server.registerResource('all-projects-details', 'projects://details', {
     description: 'Svi projekti sa kompletnim podacima i todolistama',
     mimeType: 'application/json',
@@ -392,8 +384,7 @@ server.registerResource('all-projects-details', 'projects://details', {
             }],
     };
 });
-// ─── RESOURCE 3: projects://todos ────────────────────────────────────────────
-// Vraća sve todo stavke iz svih projekata u jednoj listi
+//projects:todos-Vraća sve todo stavke iz svih projekata u jednoj listi
 server.registerResource('all-todos', 'projects://todos', {
     description: 'Sve todo stavke iz svih projekata u jedinstvenoj listi',
     mimeType: 'application/json',
@@ -417,7 +408,7 @@ server.registerResource('all-todos', 'projects://todos', {
             }],
     };
 });
-// ─── PROMPT 1: daily_overview ────────────────────────────────────────────────
+//daily_overview
 server.registerPrompt('daily_overview', {}, async () => {
     const data = readDB();
     const summary = data.projects.map((p) => ({
@@ -446,7 +437,7 @@ Budi konkretan i kratak.`,
             }],
     };
 });
-// ─── PROMPT 2: analyze_project ───────────────────────────────────────────────
+//analyze_project
 server.registerPrompt('analyze_project', { argsSchema: { project_name: zod_1.z.string().min(1) } }, async ({ project_name }) => {
     const data = readDB();
     const project = data.projects.find((p) => p.project_name.toLowerCase() === project_name.toLowerCase());
@@ -492,7 +483,7 @@ Na osnovu ovoga:
             }],
     };
 });
-// ─── PROMPT 3: suggest_todos ─────────────────────────────────────────────────
+//suggest_todos
 server.registerPrompt('suggest_todos', { argsSchema: { project_name: zod_1.z.string().min(1) } }, async ({ project_name }) => {
     const data = readDB();
     const project = data.projects.find((p) => p.project_name.toLowerCase() === project_name.toLowerCase());
@@ -520,14 +511,12 @@ Vrati samo listu zadataka, jedan po redu, bez dodatnog teksta.`,
             }],
     };
 });
-// ─── Start ────────────────────────────────────────────────────────────────────
 //Primjer samplinga kroz tool
-// ─── TOOL 7: create_random_project (sampling) ────────────────────────────────
+//create_random_project (sampling)
 server.registerTool('create_random_project', {
     description: 'Koristi LLM sampling da generiše i kreira random projekat sa todos listom',
     inputSchema: {},
 }, async () => {
-    // 1. Pozivamo LLM preko sampling-a da generiše projekat kao JSON
     const samplingResult = await server.server.createMessage({
         maxTokens: 500,
         messages: [
@@ -553,7 +542,7 @@ Generiši 4-6 konkretnih todos stavki vezanih za projekat.`,
             },
         ],
     });
-    // 2. Parsiramo odgovor LLM-a
+    // 2. Parsiranje LLM outputa
     const rawText = samplingResult.content.type === 'text' ? samplingResult.content.text : '';
     let parsed;
     try {
@@ -572,7 +561,6 @@ Generiši 4-6 konkretnih todos stavki vezanih za projekat.`,
                 }],
         };
     }
-    // 3. Zod validacija LLM outputa
     const schema = zod_1.z.object({
         project_name: zod_1.z.string().min(1),
         deadline: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -591,7 +579,7 @@ Generiši 4-6 konkretnih todos stavki vezanih za projekat.`,
                 }],
         };
     }
-    // 4. Upisujemo u podaci.json
+    //Upisujemo u podaci.json
     const data = readDB();
     const newProject = {
         id: nextId(data.projects),
@@ -617,6 +605,7 @@ Generiši 4-6 konkretnih todos stavki vezanih za projekat.`,
             }],
     };
 });
+//transport i start servera
 async function main() {
     const transport = new stdio_js_1.StdioServerTransport();
     await server.connect(transport);

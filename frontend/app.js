@@ -546,3 +546,76 @@ async function init() {
 
 init();
 
+// ─── AI AGENT CHAT ────────────────────────────────────────────────────────────
+
+// Čuva historiju razgovora za kontekst (max 20 poruka da se ne prelije)
+let chatHistory = [];
+const MAX_HISTORY = 20;
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('chatSendBtn');
+  const text = input.value.trim();
+
+  if (!text) return;
+
+  // Resetuj input i onemogući slanje dok čekamo odgovor
+  input.value = '';
+  sendBtn.disabled = true;
+
+  // Prikaži korisnikovu poruku i typing indikator
+  messages.push({ type: 'user', text });
+  messages.push({ type: 'typing' });
+  renderMessages();
+
+  try {
+    const res = await fetch(`${API_BASE}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: text,
+        history: chatHistory,
+      }),
+    });
+
+    const data = await res.json();
+    const reply = data.reply || data.error || 'Greška pri obradi zahtjeva.';
+
+    // Ukloni typing indikator, dodaj odgovor agenta
+    messages.pop();
+    messages.push({ type: 'ai', text: reply });
+
+    // Ažuriraj historiju razgovora
+    chatHistory.push({ role: 'user', content: text });
+    chatHistory.push({ role: 'assistant', content: reply });
+
+    // Ograniči historiju na MAX_HISTORY poruka
+    if (chatHistory.length > MAX_HISTORY) {
+      chatHistory = chatHistory.slice(chatHistory.length - MAX_HISTORY);
+    }
+
+    // Osvježi prikaz projekata jer je agent mogao napraviti izmjene
+    await fetchProjects();
+
+  } catch (err) {
+    console.error('[chat]', err);
+    messages.pop();
+    messages.push({ type: 'ai', text: 'Greška u komunikaciji sa agentom. Provjeri da li server radi.' });
+  }
+
+  sendBtn.disabled = false;
+  renderMessages();
+  input.focus();
+}
+
+// Event listeneri za slanje poruke
+document.getElementById('chatSendBtn')?.addEventListener('click', sendChatMessage);
+document.getElementById('chatInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+});
+
+// ─── KRAJ AI AGENT CHAT BLOKA ─────────────────────────────────────────────────
+

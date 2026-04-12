@@ -1,7 +1,9 @@
+import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
 import fs from 'fs'
 import path from 'path'
+import Groq from 'groq-sdk'
 
 type ToolAction = 'add' | 'toggle' | 'delete'
 
@@ -328,6 +330,101 @@ function buildSuggestTodosPrompt(args: Record<string, unknown>): string {
     ].join('\n')
 }
 
+interface RecoveredToolCall {
+    name: string
+    args: Record<string, unknown>
+}
+
+function extractToolCallsFromFailedGeneration(failedGeneration: string): RecoveredToolCall[] {
+    const calls: RecoveredToolCall[] = []
+    const pattern = /<function=([a-zA-Z0-9_]+)\((\{[\s\S]*?\})\)/g
+
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(failedGeneration)) !== null) {
+        const [, name, rawArgs] = match
+        try {
+            const args = JSON.parse(rawArgs) as Record<string, unknown>
+            calls.push({ name, args })
+        } catch {
+
+        }
+    }
+
+    return calls
+}
+
+function summarizeToolRecovery(results: Array<{ name: string; result: ToolResult }>): string {
+    if (results.length === 0) {
+        return 'Došlo je do greške pri pozivu alata. Pokušaj ponovo sa istim zahtjevom.'
+    }
+
+    if (results.length === 1) {
+        const { name, result } = results[0]
+
+        if (!result.success) {
+            const reason = typeof result.message === 'string' && result.message.trim()
+                ? result.message
+                : 'Nisam uspio izvršiti traženu akciju.'
+            return `Nisam uspio izvršiti akciju: ${reason}`
+        }
+
+        if (typeof result.message === 'string' && result.message.trim()) {
+            return result.message
+        }
+
+        if (name === 'manage_todo' && result.todo && typeof result.todo === 'object') {
+            const todo = result.todo as Partial<Todo>
+            if (typeof todo.text === 'string' && todo.text.trim()) {
+                return `U redu, dodao sam todo stavku "${todo.text}".`
+            }
+        }
+
+        return 'Akcija je uspješno izvršena.'
+    }
+
+    const failed = results.filter((r) => !r.result.success)
+    if (failed.length > 0) {
+        const messages = failed
+            .map((r) => (typeof r.result.message === 'string' ? r.result.message : `Neuspješan alat ${r.name}`))
+            .join('; ')
+        return `Neke akcije nisu uspjele: ${messages}`
+    }
+
+    return `Izvršeno je ${results.length} akcija.`
+}
+
+function recoverFromToolUseFailure(err: unknown): string | null {
+    const maybeErr = err as {
+        status?: number
+        error?: {
+            error?: {
+                code?: string
+                failed_generation?: string
+            }
+        }
+    }
+
+    const status = Number(maybeErr?.status)
+    const code = maybeErr?.error?.error?.code
+    const failedGeneration = maybeErr?.error?.error?.failed_generation
+
+    if (status !== 400 || code !== 'tool_use_failed' || typeof failedGeneration !== 'string') {
+        return null
+    }
+
+    const recoveredCalls = extractToolCallsFromFailedGeneration(failedGeneration)
+    if (recoveredCalls.length === 0) {
+        return 'Došlo je do greške u automatskom pozivu alata. Pokušaj ponovo sa istim zahtjevom.'
+    }
+
+    const results = recoveredCalls.map(({ name, args }) => ({
+        name,
+        result: executeToolLocally(name, args),
+    }))
+
+    return summarizeToolRecovery(results)
+}
+
 const tools = [
     {
         name: 'create_project',
@@ -492,6 +589,260 @@ app.post('/api/prompts/execute', (req, res) => {
         }],
     })
 })
+
+// ─── AI AGENT CHAT (Groq) ─────────────────────────────────────────────────────
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY ?? ''
+const groq = new Groq({ apiKey: GROQ_API_KEY })
+
+// Definicije MCP alata u OpenAI/Groq tool calling formatu
+const GROQ_TOOLS: Groq.Chat.Completions.ChatCompletionTool[] = [
+    {
+        type: 'function',
+        function: {
+            name: 'list_projects',
+            description: 'Lista sve projekte sa statusom roka i progresom todosa',
+            parameters: {
+                type: 'object',
+                properties: {},
+                required: [],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'get_project',
+            description: 'Dohvata jedan projekat po imenu sa kompletnom todo listom',
+            parameters: {
+                type: 'object',
+                properties: {
+                    project_name: {
+                        type: 'string',
+                        description: 'Ime projekta koji se traži',
+                    },
+                },
+                required: ['project_name'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'create_project',
+            description: 'Kreira novi projekat sa imenom, rokom i opcionalnim todo stavkama',
+            parameters: {
+                type: 'object',
+                properties: {
+                    project_name: {
+                        type: 'string',
+                        description: 'Ime projekta',
+                    },
+                    deadline: {
+                        type: 'string',
+                        description: 'Rok isporuke u formatu DD.MM.YYYY ili YYYY-MM-DD',
+                    },
+                    todos: {
+                        type: 'string',
+                        description: 'Opcionalne todo stavke odvojene zarezom ili novim redom',
+                    },
+                },
+                required: ['project_name', 'deadline'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'update_project',
+            description: 'Mijenja ime i/ili rok projekta po njegovom ID-u',
+            parameters: {
+                type: 'object',
+                properties: {
+                    project_id: {
+                        type: 'number',
+                        description: 'Numerički ID projekta',
+                    },
+                    project_name: {
+                        type: 'string',
+                        description: 'Novo ime projekta (opcionalno)',
+                    },
+                    deadline: {
+                        type: 'string',
+                        description: 'Novi rok u formatu DD.MM.YYYY ili YYYY-MM-DD (opcionalno)',
+                    },
+                },
+                required: ['project_id'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'manage_todo',
+            description: 'Dodaje novu, označava kao završenu ili briše todo stavku unutar projekta',
+            parameters: {
+                type: 'object',
+                properties: {
+                    action: {
+                        type: 'string',
+                        enum: ['add', 'toggle', 'delete'],
+                        description: 'Akcija: add (dodaj), toggle (završi/otvori), delete (obriši)',
+                    },
+                    project_id: {
+                        type: 'number',
+                        description: 'ID projekta',
+                    },
+                    text: {
+                        type: 'string',
+                        description: 'Tekst nove todo stavke — potrebno samo za add',
+                    },
+                    todo_id: {
+                        type: 'number',
+                        description: 'ID todo stavke — potrebno za toggle i delete',
+                    },
+                },
+                required: ['action', 'project_id'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'delete_project',
+            description: 'Trajno briše projekat i sve njegove todo stavke',
+            parameters: {
+                type: 'object',
+                properties: {
+                    project_id: {
+                        type: 'number',
+                        description: 'ID projekta koji se briše',
+                    },
+                },
+                required: ['project_id'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'create_random_project',
+            description: 'Kreira nasumičan projekat sa generisanim imenom, rokom i todo stavkama',
+            parameters: {
+                type: 'object',
+                properties: {},
+                required: [],
+            },
+        },
+    },
+]
+
+// Dispatcher — poziva odgovarajuću lokalnu funkciju na osnovu imena alata
+function executeToolLocally(name: string, args: Record<string, unknown>): ToolResult {
+    switch (name) {
+        case 'list_projects': return listProjects()
+        case 'get_project': return getProject(args)
+        case 'create_project': return createProject(args)
+        case 'update_project': return updateProject(args)
+        case 'manage_todo': return manageTodo(args)
+        case 'delete_project': return deleteProject(args)
+        case 'create_random_project': return createRandomProject()
+        default: return { success: false, message: `Nepoznat alat: ${name}` }
+    }
+}
+
+// POST /api/chat
+// Prima: { message: string, history: [{role, content}] }
+// Vraća: { reply: string }
+app.post('/api/chat', async (req, res) => {
+    const { message, history = [] } = req.body as {
+        message: string
+        history: Array<{ role: 'user' | 'assistant'; content: string }>
+    }
+
+    if (!message?.trim()) {
+        res.status(400).json({ error: 'Poruka ne može biti prazna.' })
+        return
+    }
+
+    if (!GROQ_API_KEY.trim()) {
+        res.status(500).json({ error: 'GROQ_API_KEY nije postavljen. Dodaj ga u .env i restartuj server.' })
+        return
+    }
+
+    const systemPrompt = `Ti si PlannerAI, AI agent za upravljanje projektima.
+Komuniciraš s korisnikom kroz chat interfejs web aplikacije.
+Na raspolaganju imaš MCP alate kojima upravljaš projektima i todo listama.
+UVIJEK odgovaraj na bosanskom jeziku.
+Kada korisnik traži akciju (kreiranje, pregled, brisanje projekata ili todo stavki),
+odmah koristi dostupne alate bez traženja potvrde. Budi koncizan i jasan.
+Kada koristiš alat, vrati isključivo validan tool/function poziv bez dodatnog teksta.
+Nakon izvršenja alata, ukratko potvrdi korisniku šta je urađeno.`
+
+    // Gradi niz poruka: system + historija + nova poruka korisnika
+    const messages: Groq.Chat.Completions.ChatCompletionMessageParam[] = [
+        { role: 'system', content: systemPrompt },
+        ...history.map((h) => ({
+            role: h.role as 'user' | 'assistant',
+            content: h.content,
+        })),
+        { role: 'user', content: message },
+    ]
+
+    try {
+        // Agentic loop — model može pozvati više alata zaredom
+        while (true) {
+            const response = await groq.chat.completions.create({
+                model: 'llama-3.3-70b-versatile',
+                messages,
+                tools: GROQ_TOOLS,
+                tool_choice: 'auto',
+                max_tokens: 1024,
+            })
+
+            const choice = response.choices[0]
+            const responseMessage = choice.message
+
+            // Dodaj odgovor modela u historiju poruka
+            messages.push(responseMessage)
+
+            // Ako model nije pozvao nijedan alat — gotovo, vrati odgovor
+            if (choice.finish_reason === 'stop' || !responseMessage.tool_calls?.length) {
+                const reply = responseMessage.content ?? 'Agent nije vratio odgovor.'
+                res.json({ reply })
+                return
+            }
+
+            // Model je pozvao jedan ili više alata — izvrši ih sve
+            for (const toolCall of responseMessage.tool_calls) {
+                const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>
+                const result = executeToolLocally(toolCall.function.name, args)
+
+                // Dodaj rezultat alata u historiju kao tool poruku
+                messages.push({
+                    role: 'tool',
+                    tool_call_id: toolCall.id,
+                    content: JSON.stringify(result),
+                })
+            }
+
+            // Loop se nastavlja — model sada formuliše odgovor na osnovu rezultata alata
+        }
+
+    } catch (err) {
+        const recoveredReply = recoverFromToolUseFailure(err)
+        if (recoveredReply) {
+            console.warn('[/api/chat] Aktiviran fallback nakon tool_use_failed.')
+            res.json({ reply: recoveredReply })
+            return
+        }
+
+        console.error('[/api/chat] Greška:', err)
+        res.status(500).json({ error: 'Greška pri komunikaciji sa AI agentom. Provjeri GROQ_API_KEY.' })
+    }
+})
+
+// ─── KRAJ AI AGENT CHAT BLOKA ────────────────────────────────────────────────
 
 app.use(express.static(FRONTEND_DIR))
 app.get(/.*/, (_req, res) => {
