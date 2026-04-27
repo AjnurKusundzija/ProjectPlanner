@@ -175,6 +175,26 @@ function manageTodo(args) {
     writeDB(data);
     return { success: true, message: `Todo ID ${todo_id} obrisan.` };
 }
+function addTodoToProject(args) {
+    const project_name = String(args.project_name ?? '').trim().toLowerCase();
+    const text = String(args.text ?? '').trim();
+    if (!project_name || !text) {
+        return { success: false, message: 'project_name i text su obavezni.' };
+    }
+    const data = readDB();
+    const project = data.projects.find((p) => p.project_name.trim().toLowerCase() === project_name);
+    if (!project)
+        return { success: false, message: 'Trazeni projekat nije pronadjen.' };
+    const todo = { id: nextId(project.todolist), text, is_done: false };
+    project.todolist.push(todo);
+    writeDB(data);
+    return {
+        success: true,
+        message: `Todo stavka dodana u projekat "${project.project_name}".`,
+        project,
+        todo,
+    };
+}
 function deleteProject(args) {
     const project_id = Number(args.project_id);
     if (!Number.isInteger(project_id) || project_id <= 0) {
@@ -188,6 +208,18 @@ function deleteProject(args) {
     data.projects.splice(index, 1);
     writeDB(data);
     return { success: true, message: `Projekat "${deleted.project_name}" obrisan.` };
+}
+function deleteAllProjects() {
+    const data = readDB();
+    const deletedCount = data.projects.length;
+    data.projects = [];
+    writeDB(data);
+    return {
+        success: true,
+        message: `Obrisano projekata: ${deletedCount}.`,
+        deleted_count: deletedCount,
+        projects: [],
+    };
 }
 function createRandomProject() {
     const names = [
@@ -324,13 +356,38 @@ function recoverFromToolUseFailure(err) {
     }
     const recoveredCalls = extractToolCallsFromFailedGeneration(failedGeneration);
     if (recoveredCalls.length === 0) {
-        return 'Došlo je do greške u automatskom pozivu alata. Pokušaj ponovo sa istim zahtjevom.';
+        return {
+            reply: 'Došlo je do greške u automatskom pozivu alata. Pokušaj ponovo sa istim zahtjevom.',
+            mcpTrace: [],
+        };
     }
     const results = recoveredCalls.map(({ name, args }) => ({
         name,
+        args,
         result: executeToolLocally(name, args),
     }));
-    return summarizeToolRecovery(results);
+    return {
+        reply: summarizeToolRecovery(results),
+        mcpTrace: results,
+    };
+}
+function handleDeterministicChatTool(message) {
+    const normalized = message.toLowerCase();
+    const wantsDeleteAll = (normalized.includes('obrisi sve projekte') ||
+        normalized.includes('obriši sve projekte') ||
+        normalized.includes('izbrisi sve projekte') ||
+        normalized.includes('izbriši sve projekte'));
+    if (!wantsDeleteAll)
+        return null;
+    const result = deleteAllProjects();
+    return {
+        reply: result.message ?? 'Svi projekti su obrisani.',
+        mcpTrace: [{
+                name: 'delete_all_projects',
+                args: {},
+                result,
+            }],
+    };
 }
 const tools = [
     {
@@ -395,6 +452,19 @@ const tools = [
         run: manageTodo,
     },
     {
+        name: 'add_todo_to_project',
+        description: 'Dodaje novu todo stavku u projekat koristeci ime projekta umjesto ID-a',
+        inputSchema: {
+            type: 'object',
+            required: ['project_name', 'text'],
+            properties: {
+                project_name: { type: 'string', description: 'Tacno ime projekta' },
+                text: { type: 'string', description: 'Tekst nove todo stavke' },
+            },
+        },
+        run: addTodoToProject,
+    },
+    {
         name: 'delete_project',
         description: 'Brise projekat i sve njegove todo stavke',
         inputSchema: {
@@ -405,6 +475,12 @@ const tools = [
             },
         },
         run: deleteProject,
+    },
+    {
+        name: 'delete_all_projects',
+        description: 'Brise sve projekte i sve todo stavke iz lokalne JSON baze',
+        inputSchema: { type: 'object', required: [], properties: {} },
+        run: () => deleteAllProjects(),
     },
     {
         name: 'create_random_project',
@@ -636,7 +712,9 @@ function executeToolLocally(name, args) {
         case 'create_project': return createProject(args);
         case 'update_project': return updateProject(args);
         case 'manage_todo': return manageTodo(args);
+        case 'add_todo_to_project': return addTodoToProject(args);
         case 'delete_project': return deleteProject(args);
+        case 'delete_all_projects': return deleteAllProjects();
         case 'create_random_project': return createRandomProject();
         default: return { success: false, message: `Nepoznat alat: ${name}` };
     }
@@ -654,12 +732,19 @@ app.post('/api/chat', async (req, res) => {
         res.status(500).json({ error: 'GROQ_API_KEY nije postavljen. Dodaj ga u .env i restartuj server.' });
         return;
     }
+    const deterministicToolResponse = handleDeterministicChatTool(message);
+    if (deterministicToolResponse) {
+        res.json(deterministicToolResponse);
+        return;
+    }
     const systemPrompt = `Ti si PlannerAI, AI agent za upravljanje projektima.
 Komuniciraš s korisnikom kroz chat interfejs web aplikacije.
 Na raspolaganju imaš MCP alate kojima upravljaš projektima i todo listama.
+Svaki dostupni alat predstavlja MCP operaciju nad lokalnom JSON bazom data/podaci.json.
 UVIJEK odgovaraj na bosanskom jeziku.
 Kada korisnik traži akciju (kreiranje, pregled, brisanje projekata ili todo stavki),
 odmah koristi dostupne alate bez traženja potvrde. Budi koncizan i jasan.
+Ako korisnik traži dodavanje todo stavke po imenu projekta, koristi add_todo_to_project.
 Kada koristiš alat, vrati isključivo validan tool/function poziv bez dodatnog teksta.
 Nakon izvršenja alata, ukratko potvrdi korisniku šta je urađeno.`;
     // Gradi niz poruka: system + historija + nova poruka korisnika
@@ -671,6 +756,7 @@ Nakon izvršenja alata, ukratko potvrdi korisniku šta je urađeno.`;
         })),
         { role: 'user', content: message },
     ];
+    const mcpTrace = [];
     try {
         // Agentic loop — model može pozvati više alata zaredom
         while (true) {
@@ -688,13 +774,18 @@ Nakon izvršenja alata, ukratko potvrdi korisniku šta je urađeno.`;
             // Ako model nije pozvao nijedan alat — gotovo, vrati odgovor
             if (choice.finish_reason === 'stop' || !responseMessage.tool_calls?.length) {
                 const reply = responseMessage.content ?? 'Agent nije vratio odgovor.';
-                res.json({ reply });
+                res.json({ reply, mcpTrace });
                 return;
             }
             // Model je pozvao jedan ili više alata — izvrši ih sve
             for (const toolCall of responseMessage.tool_calls) {
                 const args = JSON.parse(toolCall.function.arguments);
                 const result = executeToolLocally(toolCall.function.name, args);
+                mcpTrace.push({
+                    name: toolCall.function.name,
+                    args,
+                    result,
+                });
                 // Dodaj rezultat alata u historiju kao tool poruku
                 messages.push({
                     role: 'tool',
@@ -709,7 +800,7 @@ Nakon izvršenja alata, ukratko potvrdi korisniku šta je urađeno.`;
         const recoveredReply = recoverFromToolUseFailure(err);
         if (recoveredReply) {
             console.warn('[/api/chat] Aktiviran fallback nakon tool_use_failed.');
-            res.json({ reply: recoveredReply });
+            res.json(recoveredReply);
             return;
         }
         console.error('[/api/chat] Greška:', err);

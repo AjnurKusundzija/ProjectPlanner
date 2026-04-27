@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="bs">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PlannerAI — Intelligent Project Management</title>
+  <title>PlannerAI - Upravljanje projektima</title>
   <meta name="description"
-    content="PlannerAI is a project management tool for managing projects, tasks, and deadlines with MCP tools.">
+    content="PlannerAI je alat za upravljanje projektima, zadacima i rokovima uz MCP alate.">
   <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -26,8 +26,8 @@
       <div class="sidebar-divider"></div>
 
       <nav class="sidebar-nav">
-        <div class="nav-label">Workspace</div>
-        <div class="nav-item active" data-page="Dashboard" id="nav-dashboard">
+        <div class="nav-label">Radni prostor</div>
+        <div class="nav-item active" data-page="Pregled" id="nav-dashboard">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -35,35 +35,35 @@
             <rect x="3" y="14" width="7" height="7" rx="1" />
             <rect x="14" y="14" width="7" height="7" rx="1" />
           </svg>
-          Dashboard
+          Pregled
         </div>
-        <div class="nav-item" data-page="Projects" id="nav-projects">
+        <div class="nav-item" data-page="Projekti" id="nav-projects">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
-          Projects
+          Projekti
         </div>
-        <div class="nav-item" data-page="Todo Lists" id="nav-todos">
+        <div class="nav-item" data-page="Todo liste" id="nav-todos">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <path d="M9 11l3 3L22 4" />
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
           </svg>
-          Todo Lists
+          Todo liste
         </div>
-        <div class="nav-item" data-page="Analytics" id="nav-analytics">
+        <div class="nav-item" data-page="Analitika" id="nav-analytics">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <line x1="18" y1="20" x2="18" y2="10" />
             <line x1="12" y1="20" x2="12" y2="4" />
             <line x1="6" y1="20" x2="6" y2="14" />
           </svg>
-          Analytics
+          Analitika
         </div>
 
-        <div class="nav-label">AI Tools</div>
-        <div class="nav-item" data-page="Daily Overview" id="nav-daily">
+        <div class="nav-label">AI alati</div>
+        <div class="nav-item" data-page="Dnevni pregled" id="nav-daily">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <circle cx="12" cy="12" r="5" />
@@ -76,25 +76,25 @@
             <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
             <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
           </svg>
-          Daily Overview
+          Dnevni pregled
         </div>
-        <div class="nav-item" data-page="Analyze Project" id="nav-analyze">
+        <div class="nav-item" data-page="Analiza projekta" id="nav-analyze">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          Analyze Project
+          Analiza projekta
         </div>
-        <div class="nav-item" data-page="Suggest Tasks" id="nav-suggest">
+        <div class="nav-item" data-page="Prijedlog zadataka" id="nav-suggest">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <path
               d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
           </svg>
-          Suggest Tasks
+          Prijedlog zadataka
         </div>
-        <div class="nav-item" data-page="Random Project" id="nav-random">
+        <div class="nav-item" data-page="Nasumični projekat" id="nav-random">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <rect x="2" y="2" width="20" height="20" rx="3" />
@@ -104,14 +104,14 @@
             <circle cx="16" cy="16" r="1.5" fill="currentColor" />
             <circle cx="12" cy="12" r="1.5" fill="currentColor" />
           </svg>
-          Random Project
+          Nasumični projekat
         </div>
       </nav>
 
       <div class="sidebar-footer">
         <div class="status-indicator">
           <div class="status-dot"></div>
-          MCP Server · Connected
+          MCP server · povezan
         </div>
         <div class="version-tag">v1.0.0</div>
       </div>
@@ -125,24 +125,24 @@
 
       <div class="top-bar">
         <div style="display:flex;align-items:center;gap:10px;">
-          <button class="hamburger-btn" id="hamburgerBtn" aria-label="Open menu">
+          <button class="hamburger-btn" id="hamburgerBtn" aria-label="Otvori meni">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <line x1="3" y1="6" x2="21" y2="6" />
               <line x1="3" y1="12" x2="21" y2="12" />
               <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          <span class="top-bar-title" id="pageTitle">Dashboard</span>
+          <span class="top-bar-title" id="pageTitle">Pregled</span>
         </div>
         <div class="top-bar-actions">
-          <button class="icon-btn" id="refreshBtn" aria-label="Refresh">
+          <button class="icon-btn" id="refreshBtn" aria-label="Osvježi">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
               stroke-linejoin="round">
               <polyline points="23 4 23 10 17 10" />
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
             </svg>
           </button>
-          <button class="icon-btn" id="settingsBtn" aria-label="Settings">
+          <button class="icon-btn" id="settingsBtn" aria-label="Postavke">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
               stroke-linejoin="round">
               <circle cx="12" cy="12" r="3" />
@@ -155,7 +155,7 @@
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            New Project
+            Novi projekat
           </button>
         </div>
       </div>
@@ -171,7 +171,7 @@
           type="text"
           id="chatInput"
           class="chat-input"
-          placeholder="Pitaj agenta… npr. 'Napravi projekat Diplomski rok 15.06.2026'"
+          placeholder="Pitaj agenta... npr. 'Napravi projekat Diplomski rok 15.06.2026'"
           autocomplete="off"
           maxlength="500"
         />
@@ -189,8 +189,8 @@
 
     <aside class="tools-panel" id="toolsPanel">
       <div class="tools-panel-header">
-        <span class="tools-panel-title">MCP Tools</span>
-        <button class="icon-btn" aria-label="Info">
+        <span class="tools-panel-title">MCP alati</span>
+        <button class="icon-btn" aria-label="Informacije">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <circle cx="12" cy="12" r="10" />
@@ -205,7 +205,7 @@
       </div>
 
       <div class="prompts-section">
-        <div class="section-label">Prompts</div>
+        <div class="section-label">Promptovi</div>
         <div id="promptsList">
           <!-- Rendered by JS -->
         </div>
@@ -213,7 +213,7 @@
 
       <div class="recent-activity">
         <div class="activity-header" id="activityToggle">
-          <span>Recent Activity</span>
+          <span>Nedavne aktivnosti</span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <polyline points="6 9 12 15 18 9" />
           </svg>
@@ -225,7 +225,7 @@
     </aside>
 
 
-    <button class="tools-fab" id="toolsFab" aria-label="Toggle tools">
+    <button class="tools-fab" id="toolsFab" aria-label="Prikaži ili sakrij alate">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
         stroke-linejoin="round">
         <path
@@ -237,13 +237,13 @@
 
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal" id="modalContent">
-      <h2 id="modalTitle">Tool Name</h2>
+      <h2 id="modalTitle">Naziv alata</h2>
       <div id="modalFields">
 
       </div>
       <div class="modal-actions">
-        <button class="modal-btn cancel" id="modalCancel">Cancel</button>
-        <button class="modal-btn run" id="modalRun">Run</button>
+        <button class="modal-btn cancel" id="modalCancel">Odustani</button>
+        <button class="modal-btn run" id="modalRun">Pokreni</button>
       </div>
     </div>
   </div>

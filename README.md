@@ -28,6 +28,17 @@ This repository represents the practical part of the final thesis.
 - List project summaries and statuses
 - Execute MCP prompts for planning and analysis
 - Generate random project data using MCP sampling tool
+- Chat with PlannerAI agent that chooses MCP tools and shows the executed MCP trace in the UI
+
+## How The Agent Uses MCP
+
+PlannerAI does not write project data directly from free-form chat text. The chat request is first sent to the Groq model together with the MCP tool catalog (`create_project`, `list_projects`, `manage_todo`, and related tools). The model decides whether the user request requires a tool call, prepares structured arguments, and the backend dispatches that call to the same project-management functions that update `data/podaci.json`.
+
+The response returned to the frontend contains two parts:
+- `reply` - the natural-language answer shown to the user
+- `mcpTrace` - the concrete MCP tool name, arguments, and result returned from the local JSON database
+
+This makes the role of MCP visible in the practical part: MCP is the structured interface between the AI agent and the application state, while the UI shows both the final answer and the tool execution that changed or read the data.
 
 ## Tech Stack
 

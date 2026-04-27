@@ -9,21 +9,44 @@ const toolMeta = {
   list_projects: { color: "#14b8a6", icon: "list" },
   update_project: { color: "#f59e0b", icon: "edit" },
   manage_todo: { color: "#22c55e", icon: "check-circle" },
+  add_todo_to_project: { color: "#22c55e", icon: "check-circle" },
   delete_project: { color: "#ef4444", icon: "trash" },
+  delete_all_projects: { color: "#dc2626", icon: "trash" },
   create_random_project: { color: "#ec4899", icon: "dice" }
 };
 
+const toolLabels = {
+  create_project: "Kreiraj projekat",
+  get_project: "Pronađi projekat",
+  list_projects: "Prikaži projekte",
+  update_project: "Ažuriraj projekat",
+  manage_todo: "Upravljaj zadacima",
+  add_todo_to_project: "Dodaj zadatak",
+  delete_project: "Obriši projekat",
+  delete_all_projects: "Obriši sve projekte",
+  create_random_project: "Nasumični projekat"
+};
+
 const promptMeta = {
-  daily_overview: { color: "#f59e0b", icon: "sun", label: "Daily Overview" },
-  analyze_project: { color: "#3b82f6", icon: "chart", label: "Analyze Project" },
-  suggest_todos: { color: "#a78bfa", icon: "sparkle", label: "Suggest Todos" }
+  daily_overview: { color: "#f59e0b", icon: "sun", label: "Dnevni pregled" },
+  analyze_project: { color: "#3b82f6", icon: "chart", label: "Analiza projekta" },
+  suggest_todos: { color: "#a78bfa", icon: "sparkle", label: "Prijedlog zadataka" }
+};
+
+const promptFallbackArgs = {
+  analyze_project: [
+    { name: "project_name", description: "Ime projekta", required: true }
+  ],
+  suggest_todos: [
+    { name: "project_name", description: "Ime projekta", required: true }
+  ]
 };
 
 let serverTools = [];
 let serverPrompts = [];
 let recentActivities = [];
 let messages = [];
-let currentPage = "Dashboard";
+let currentPage = "Pregled";
 let currentTool = null;
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -84,13 +107,13 @@ function renderWelcomeState() {
   return `
     <div class="welcome-state">
       <div class="welcome-logo">${diamondLargeSVG}</div>
-      <h1 class="welcome-heading">What would you like to manage today?</h1>
-      <p class="welcome-sub">I can help you create projects, manage tasks, analyze progress, and plan your workflow via MCP.</p>
+      <h1 class="welcome-heading">Šta želiš planirati danas?</h1>
+      <p class="welcome-sub">Mogu kreirati projekte, upravljati zadacima, analizirati progres i prikazati MCP pozive agenta.</p>
       <div class="quick-actions">
-        <div class="quick-chip" data-action="list_projects">List all projects</div>
-        <div class="quick-chip" data-action="create_project">Create new project</div>
-        <div class="quick-chip" data-action="daily_overview">Daily overview</div>
-        <div class="quick-chip" data-action="suggest_todos">Suggest tasks</div>
+        <div class="quick-chip" data-action="list_projects">Prikaži sve projekte</div>
+        <div class="quick-chip" data-action="create_project">Kreiraj novi projekat</div>
+        <div class="quick-chip" data-action="daily_overview">Dnevni pregled</div>
+        <div class="quick-chip" data-action="suggest_todos">Predloži zadatke</div>
       </div>
     </div>
   `;
@@ -152,21 +175,55 @@ function renderToolMessage(msg) {
     <div class="message tool-result">
       <div class="tool-result-box">
         <div class="tool-badge">⚡ ${msg.tool}</div>
-        <div style="color:var(--text-secondary);line-height:1.6; white-space: pre-wrap;">${msg.text || ""}</div>
+        <div style="color:var(--text-secondary);line-height:1.6; white-space: pre-wrap;">${escapeHtml(msg.text || "")}</div>
         ${projectCards}
       </div>
     </div>
   `;
 }
 
+function formatMcpTrace(trace) {
+  const args = trace.args && Object.keys(trace.args).length > 0
+    ? JSON.stringify(trace.args, null, 2)
+    : "{}";
+  const result = trace.result
+    ? JSON.stringify(trace.result, null, 2)
+    : "{}";
+
+  return `Agent je pozvao MCP alat \`${trace.name}\`.\n\nArgumenti:\n${args}\n\nRezultat:\n${result}`;
+}
+
+function getPromptText(data) {
+  return (data.messages || [])
+    .map(m => m.content?.type === 'text' ? m.content.text : '')
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function askAgent(promptText) {
+  const res = await fetch(`${API_BASE}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: promptText,
+      history: chatHistory,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return data;
+}
+
 function renderProjectMiniCard(project) {
-  if (!project.project_name) return ''; // fallback if it's not a valid project
+  if (!project.project_name) return '';
 
   const now = new Date();
   const dl = new Date(project.deadline);
   const isFuture = dl >= now;
   const dlClass = isFuture ? "future" : "past";
-  const dlText = dl.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const dlText = dl.toLocaleDateString("bs-BA", { day: "numeric", month: "short", year: "numeric" });
 
   let todos = "";
   if (project.todolist && Array.isArray(project.todolist)) {
@@ -200,7 +257,7 @@ async function fetchTools() {
     serverTools = data.tools || [];
     renderToolsPanel();
   } catch (e) {
-    console.error("Failed to fetch tools", e);
+    console.error("Neuspješno dohvaćanje alata", e);
   }
 }
 
@@ -211,7 +268,7 @@ async function fetchPrompts() {
     serverPrompts = data.prompts || [];
     renderToolsPanel();
   } catch (e) {
-    console.error("Failed to fetch prompts", e);
+    console.error("Neuspješno dohvaćanje promptova", e);
   }
 }
 
@@ -228,23 +285,24 @@ async function fetchProjects() {
       cachedProjects = parsed.projects || [];
     }
   } catch (e) {
-    console.error("Failed to fetch initial projects", e);
+    console.error("Neuspješno dohvaćanje projekata", e);
   }
 }
 function renderToolsPanel() {
   const toolsList = $("#toolsList");
   toolsList.innerHTML = serverTools.map(t => {
     const meta = toolMeta[t.name] || { color: "#7c5cfc", icon: "search" };
+    const label = toolLabels[t.name] || t.name;
     return `
     <div class="tool-card" data-tool="${t.name}">
       <div class="tool-icon" style="background:${meta.color}20;color:${meta.color};">
         ${getToolIcon(meta.icon)}
       </div>
       <div class="tool-info">
-        <div class="tool-name">${t.name}</div>
-        <div class="tool-desc" title="${t.description || ''}">${t.description || 'No description'}</div>
+        <div class="tool-name">${label}</div>
+        <div class="tool-desc" title="${t.description || ''}">${t.description || 'Bez opisa'}</div>
       </div>
-      <button class="tool-run-btn" data-tool="${t.name}">Run</button>
+      <button class="tool-run-btn" data-tool="${t.name}">Pokreni</button>
     </div>
   `}).join("");
   toolsList.querySelectorAll(".tool-run-btn").forEach(btn => {
@@ -329,16 +387,16 @@ $$(".nav-item").forEach(item => {
 
 function getPageWelcome(page) {
   const welcomes = {
-    "Dashboard": "Welcome to your **Dashboard**. Use the MCP Tools panel on the right to start interacting with the local `server.ts` JSON database.",
-    "Projects": "📁 **Projects** — I can help you create, update, or analyze any project using our backend MCP tools.",
-    "Todo Lists": "✅ **Todo Lists** — Use the `manage_todo` tool to add items to your projects.",
-    "Analytics": "📊 **Analytics** — Execute the Prompt `analyze_project` to get LLM simulated reports.",
-    "Daily Overview": "☀️ **Daily Overview**\n\nRun the `daily_overview` prompt for your daily briefing.",
-    "Analyze Project": "🔍 **Project Analysis** — Use the Prompt tool to start an analysis.",
-    "Suggest Tasks": "✨ **Task Suggestions** — Use the connected LLM MCP prompt to suggest you tasks for a project.",
-    "Random Project": "🎲 **Random Project** — Use the `create_random_project` tool."
+    "Pregled": "**Pregled** — koristi panel MCP alata desno ili chat agenta za rad sa lokalnom JSON bazom.",
+    "Projekti": "**Projekti** — mogu kreirati, ažurirati, obrisati ili analizirati projekat kroz MCP alate.",
+    "Todo liste": "**Todo liste** — koristi `manage_todo` ili `add_todo_to_project` za dodavanje i izmjenu zadataka.",
+    "Analitika": "**Analitika** — pokreni prompt `analyze_project` za analizu projekta.",
+    "Dnevni pregled": "**Dnevni pregled**\n\nPokreni `daily_overview` prompt za kratak pregled prioriteta.",
+    "Analiza projekta": "**Analiza projekta** — izaberi prompt za analizu konkretnog projekta.",
+    "Prijedlog zadataka": "**Prijedlog zadataka** — MCP prompt može predložiti nove zadatke za odabrani projekat.",
+    "Nasumični projekat": "**Nasumični projekat** — koristi alat `create_random_project` za generisanje testnog projekta."
   };
-  return welcomes[page] || "Welcome to **" + page + "**! How can I help you?";
+  return welcomes[page] || "Dobro došao u **" + page + "**. Kako mogu pomoći?";
 }
 let isPromptModal = false;
 
@@ -348,7 +406,7 @@ function openToolModal(toolName) {
 
   currentTool = tool;
   isPromptModal = false;
-  modalTitle.textContent = tool.name;
+  modalTitle.textContent = toolLabels[tool.name] || tool.name;
 
   let fieldsHTML = '';
   if (tool.inputSchema && tool.inputSchema.properties) {
@@ -364,7 +422,7 @@ function openToolModal(toolName) {
   }
 
   if (!fieldsHTML) {
-    modalFields.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">This tool requires no parameters. Click Run to execute.</p>';
+    modalFields.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">Ovaj alat ne traži parametre. Klikni Pokreni za izvršavanje.</p>';
   } else {
     modalFields.innerHTML = fieldsHTML;
   }
@@ -378,11 +436,15 @@ function openPromptModal(promptName) {
 
   currentTool = prompt;
   isPromptModal = true;
-  modalTitle.textContent = prompt.name;
+  modalTitle.textContent = promptMeta[prompt.name]?.label || prompt.name;
 
   let fieldsHTML = '';
-  if (prompt.arguments) {
-    for (const arg of prompt.arguments) {
+  const promptArgs = Array.isArray(prompt.arguments) && prompt.arguments.length > 0
+    ? prompt.arguments
+    : (promptFallbackArgs[prompt.name] || []);
+
+  if (promptArgs.length > 0) {
+    for (const arg of promptArgs) {
       fieldsHTML += `
             <div class="modal-field">
               <label>${arg.name} ${arg.required ? '*' : ''}</label>
@@ -393,7 +455,7 @@ function openPromptModal(promptName) {
   }
 
   if (!fieldsHTML) {
-    modalFields.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">This prompt requires no arguments. Click Run to execute.</p>';
+    modalFields.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">Ovaj prompt ne traži argumente. Klikni Pokreni za izvršavanje.</p>';
   } else {
     modalFields.innerHTML = fieldsHTML;
   }
@@ -435,7 +497,10 @@ modalRun.addEventListener("click", async () => {
 
   closeModal();
 
-  messages.push({ type: "user", text: `Run ${isRunningPrompt ? 'prompt' : 'tool'}: ${toolNameToRun}` });
+  const displayName = isRunningPrompt
+    ? (promptMeta[toolNameToRun]?.label || toolNameToRun)
+    : (toolLabels[toolNameToRun] || toolNameToRun);
+  messages.push({ type: "user", text: `Pokreni ${isRunningPrompt ? 'prompt' : 'alat'}: ${displayName}` });
   messages.push({ type: "typing" });
   renderMessages();
 
@@ -453,14 +518,28 @@ modalRun.addEventListener("click", async () => {
     if (data.error) throw new Error(data.error);
 
     if (isRunningPrompt) {
-      if (data.messages && data.messages.length > 0) {
+      const promptText = getPromptText(data);
+      if (!promptText.trim()) {
+        throw new Error("Prompt nije vratio tekst za obradu.");
+      }
+
+      const agentData = await askAgent(promptText);
+      const mcpTrace = Array.isArray(agentData.mcpTrace) ? agentData.mcpTrace : [];
+      mcpTrace.forEach(trace => {
+        const result = trace.result || {};
         messages.push({
           type: "tool",
-          tool: toolNameToRun,
-          text: data.messages.map(m => m.content?.type === 'text' ? m.content.text : '').join("\n")
+          tool: `MCP: ${toolLabels[trace.name] || trace.name}`,
+          text: formatMcpTrace(trace),
+          project: result.project,
+          projects: result.projects
         });
-      }
-      addActivity(`Executed prompt: ${toolNameToRun}`);
+      });
+      messages.push({
+        type: "ai",
+        text: agentData.reply || "Agent nije vratio odgovor."
+      });
+      addActivity(`Pokrenut prompt: ${displayName}`);
     } else {
       if (data.content && data.content.length > 0) {
         const textContent = data.content[0].text;
@@ -469,13 +548,13 @@ modalRun.addEventListener("click", async () => {
 
         messages.push({
           type: "tool",
-          tool: toolNameToRun,
+          tool: displayName,
           text: textContent,
           project: parsedResult.project,
           projects: parsedResult.projects
         });
       }
-      addActivity(`Executed tool: ${toolNameToRun}`);
+      addActivity(`Pokrenut alat: ${displayName}`);
       fetchProjects();
     }
 
@@ -483,8 +562,8 @@ modalRun.addEventListener("click", async () => {
     messages = messages.filter(m => m.type !== "typing");
     messages.push({
       type: "tool",
-      tool: toolNameToRun,
-      text: `Error: ${err.message}`
+      tool: displayName,
+      text: `Greška: ${err.message}`
     });
   }
   renderMessages();
@@ -495,7 +574,7 @@ refreshBtn.addEventListener("click", () => {
   messages = [];
   messages.push({
     type: "ai",
-    text: `Data locally refreshed! You have **${cachedProjects.length} projects** tracked.`
+    text: `Podaci su osvježeni. Trenutno se prati **${cachedProjects.length} projekata**.`
   });
   renderMessages();
   fetchTools();
@@ -539,7 +618,7 @@ async function init() {
   let projectCount = cachedProjects.length;
   messages.push({
     type: "ai",
-    text: `Hello! I'm **PlannerAI**, running connected to your MCP Server! I can see you have **${projectCount} active projects**. Open the tools panel and let's get to work.`
+    text: `Zdravo! Ja sam **PlannerAI** i povezan sam sa tvojim MCP serverom. Trenutno vidim **${projectCount} aktivnih projekata**. Možeš koristiti panel alata ili me pitati direktno u chatu.`
   });
   renderMessages();
 }
@@ -579,10 +658,24 @@ async function sendChatMessage() {
     });
 
     const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
     const reply = data.reply || data.error || 'Greška pri obradi zahtjeva.';
 
-    // Ukloni typing indikator, dodaj odgovor agenta
+    // Ukloni typing indikator, dodaj MCP trag i odgovor agenta
     messages.pop();
+    const mcpTrace = Array.isArray(data.mcpTrace) ? data.mcpTrace : [];
+    mcpTrace.forEach(trace => {
+      const result = trace.result || {};
+      messages.push({
+        type: 'tool',
+        tool: `MCP: ${toolLabels[trace.name] || trace.name}`,
+        text: formatMcpTrace(trace),
+        project: result.project,
+        projects: result.projects
+      });
+    });
     messages.push({ type: 'ai', text: reply });
 
     // Ažuriraj historiju razgovora
@@ -600,7 +693,7 @@ async function sendChatMessage() {
   } catch (err) {
     console.error('[chat]', err);
     messages.pop();
-    messages.push({ type: 'ai', text: 'Greška u komunikaciji sa agentom. Provjeri da li server radi.' });
+    messages.push({ type: 'ai', text: `Greška u komunikaciji sa agentom: ${err.message}` });
   }
 
   sendBtn.disabled = false;
